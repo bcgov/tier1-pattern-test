@@ -1,7 +1,4 @@
 ---
-# GitHub Agentic Workflow — Tier 1 issue triage
-# Preview tooling: compile with `gh aw compile` then commit the .lock.yml
-# Docs: https://docs.github.com/en/copilot/how-tos/github-agentic-workflows/creating-github-agentic-workflows
 name: Tier 1 / Issue triage (gh-aw)
 on:
   issues:
@@ -9,11 +6,9 @@ on:
 
 permissions:
   contents: read
-  issues: write
+  issues: read
   pull-requests: read
   copilot-requests: write
-
-network: defaults
 
 engine: copilot
 
@@ -28,6 +23,8 @@ safe-outputs:
 ---
 
 # Tier 1 — Issue triage (agentic)
+
+Compile with `gh aw compile`, then commit the generated `.lock.yml`.
 
 You are triaging a newly opened or reopened GitHub issue in a BC Gov digital service repository.
 
@@ -44,3 +41,4 @@ You are triaging a newly opened or reopened GitHub issue in a BC Gov digital ser
 - Do not close the issue.
 - Do not modify code or open pull requests.
 - Prefer precision over many labels.
+- Use only safe-outputs for writes (labels and comments).

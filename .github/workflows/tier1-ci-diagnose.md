@@ -13,18 +13,15 @@ on:
 permissions:
   actions: read
   contents: read
-  issues: write
-  pull-requests: write
+  issues: read
+  pull-requests: read
   copilot-requests: write
-
-network: defaults
 
 engine: copilot
 
 tools:
   github:
     toolsets: [default]
-  bash:
 
 safe-outputs:
   add-comment:
@@ -34,13 +31,15 @@ safe-outputs:
 
 # Tier 1 — CI diagnose (agentic)
 
+Compile with `gh aw compile`, then commit the generated `.lock.yml`.
+
 A watched GitHub Actions workflow has completed. Run **only if** the conclusion is **failure**.
 
 ## Tasks
 
 1. Inspect the failed workflow run and failed job logs.
 2. Produce a short diagnosis: likely root cause, evidence from the log, and 2–5 concrete next steps.
-3. If there is an open pull request for the failing head SHA, comment on that PR.
+3. If there is an open pull request for the failing head SHA, comment on that PR via safe-outputs.
 4. Otherwise open a GitHub issue titled `Tier 1: CI failed — <workflow name>` with the diagnosis.
 
 ## Constraints
