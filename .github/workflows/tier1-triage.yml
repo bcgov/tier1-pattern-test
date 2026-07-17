@@ -21,4 +21,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
+          TIER1_LLM_API_KEY: ${{ secrets.TIER1_LLM_API_KEY }}
+          TIER1_LLM_BASE_URL: ${{ secrets.TIER1_LLM_BASE_URL }}
+          TIER1_LLM_MODEL: ${{ vars.TIER1_LLM_MODEL }}
         run: node .github/tier1/scripts/triage-issue.mjs

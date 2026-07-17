@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 /**
  * Detect when code paths have newer commits than doc paths; write a report
- * and optionally open a draft PR.
+ * and optionally open a draft PR. Optional LLM section drafts doc update hints.
+ * Skips when agent.mode=gh-aw.
  */
-import { existsSync, mkdirSync, writeFileSync, statSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, statSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { loadConfig, repoRoot } from "./lib/config.mjs";
 import { ensureLabel, gh } from "./lib/gh.mjs";
+import { resolveAgentMode, skipIfGhAw } from "./lib/agent-mode.mjs";
+import { chatCompletion } from "./lib/llm.mjs";
 
 function git(args, root) {
   return execFileSync("git", args, {
@@ -54,6 +57,10 @@ if (!cfg.docs_drift?.enabled) {
   process.exit(0);
 }
 
+const mode = resolveAgentMode(cfg);
+console.log(`agent.mode resolved: ${mode}`);
+if (skipIfGhAw(mode, "docs drift")) process.exit(0);
+
 const docFiles = (cfg.docs_drift.doc_paths || []).flatMap((p) => listFiles(root, p));
 const codeFiles = (cfg.docs_drift.code_paths || []).flatMap((p) => listFiles(root, p));
 
@@ -69,11 +76,22 @@ const drift = codeTs > docTs + 60; // code commit newer than docs by >60s
 const reportPath = cfg.docs_drift.report_path || "docs/tier1-docs-drift-report.md";
 const dryRun = process.argv.includes("--dry-run");
 
+let agentSection = "";
+let source = "heuristic";
+if (drift && mode === "llm") {
+  const llmHints = await llmDocHints(cfg, root, codeFiles, docFiles);
+  if (llmHints) {
+    agentSection = ["", "## Agent-suggested doc updates", "", llmHints, ""].join("\n");
+    source = "llm";
+  }
+}
+
 const report = [
   `# Docs drift report`,
   "",
   `Project: **${cfg.project || "repo"}**`,
   `Generated: ${new Date().toISOString()}`,
+  `Mode: \`${mode}\` · source: \`${source}\``,
   "",
   `| Signal | Value |`,
   `| --- | --- |`,
@@ -88,14 +106,38 @@ const report = [
   "1. Review recent changes under code paths.",
   "2. Update README/docs to match public behaviour.",
   "3. Merge this report PR or close after docs are updated.",
-  "",
+  agentSection,
   "## Recent code files (sample)",
   "",
   ...codeFiles.slice(0, 40).map((f) => `- \`${f}\``),
   "",
-  "_Tier 1 heuristic — not a full doc coverage analysis._",
+  "_Tier 1 — timestamp drift detection; LLM section is advisory only._",
   "",
 ].join("\n");
+
+async function llmDocHints(cfg, root, codeFiles, docFiles) {
+  const samples = [];
+  for (const f of codeFiles.slice(0, 5)) {
+    try {
+      const text = readFileSync(path.join(root, f), "utf8").slice(0, 1500);
+      samples.push(`### ${f}\n\`\`\`\n${text}\n\`\`\``);
+    } catch {
+      /* skip */
+    }
+  }
+  const docSample = docFiles.slice(0, 3).map((f) => {
+    try {
+      return `### ${f}\n${readFileSync(path.join(root, f), "utf8").slice(0, 1200)}`;
+    } catch {
+      return `### ${f}\n(unreadable)`;
+    }
+  });
+
+  const system = `You help keep docs aligned with code. Suggest concrete doc edits in markdown.
+Do not invent APIs not visible in the code samples. Keep under 350 words.`;
+  const user = ["Code samples:", ...samples, "", "Current docs:", ...docSample].join("\n");
+  return chatCompletion(cfg, system, user);
+}
 
 console.log(report);
 

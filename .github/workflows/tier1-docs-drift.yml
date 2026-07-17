@@ -29,4 +29,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
+          TIER1_LLM_API_KEY: ${{ secrets.TIER1_LLM_API_KEY }}
+          TIER1_LLM_BASE_URL: ${{ secrets.TIER1_LLM_BASE_URL }}
+          TIER1_LLM_MODEL: ${{ vars.TIER1_LLM_MODEL }}
         run: node .github/tier1/scripts/docs-drift.mjs

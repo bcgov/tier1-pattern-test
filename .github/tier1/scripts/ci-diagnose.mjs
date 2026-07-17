@@ -1,10 +1,17 @@
 #!/usr/bin/env node
 /**
- * Heuristic CI failure diagnosis from workflow logs.
- * Env: WORKFLOW_NAME, RUN_ID, RUN_URL, HEAD_SHA, REPO (owner/name)
+ * CI failure diagnosis — heuristic and/or LLM.
+ * Skips when agent.mode=gh-aw.
  */
 import { loadConfig, repoRoot } from "./lib/config.mjs";
 import { gh } from "./lib/gh.mjs";
+import { resolveAgentMode, skipIfGhAw } from "./lib/agent-mode.mjs";
+import { chatCompletion } from "./lib/llm.mjs";
+
+function arg(name) {
+  const i = process.argv.indexOf(`--${name}`);
+  return i === -1 ? undefined : process.argv[i + 1];
+}
 
 const root = repoRoot();
 const cfg = loadConfig(root);
@@ -13,15 +20,14 @@ if (!cfg.ci_diagnose?.enabled) {
   process.exit(0);
 }
 
+const mode = resolveAgentMode(cfg);
+console.log(`agent.mode resolved: ${mode}`);
+if (skipIfGhAw(mode, "ci diagnose")) process.exit(0);
+
 const runId = process.env.RUN_ID || arg("run-id");
 const workflowName = process.env.WORKFLOW_NAME || "";
 const runUrl = process.env.RUN_URL || "";
 const headSha = process.env.HEAD_SHA || "";
-
-function arg(name) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i === -1 ? undefined : process.argv[i + 1];
-}
 
 if (!runId) {
   console.error("RUN_ID required");
@@ -46,9 +52,21 @@ if (logText.length > max) logText = logText.slice(-max);
 
 const findings = analyze(logText);
 const project = cfg.project || "repo";
+let source = "heuristic";
+let narrative = heuristicNarrative(findings);
+
+if (mode === "llm") {
+  const llmText = await llmDiagnose(cfg, { workflowName, runUrl, headSha, logText, findings });
+  if (llmText) {
+    narrative = llmText;
+    source = "llm";
+  } else {
+    console.warn("LLM diagnose failed — using heuristic");
+  }
+}
 
 const body = [
-  `### Tier 1 CI diagnosis (${project})`,
+  `### Tier 1 CI diagnosis (${project}) · \`${source}\``,
   "",
   `| | |`,
   `| --- | --- |`,
@@ -56,15 +74,7 @@ const body = [
   `| Run | ${runUrl || runId} |`,
   `| SHA | \`${headSha || "n/a"}\` |`,
   "",
-  "## Likely causes",
-  "",
-  ...(findings.length ? findings.map((f, i) => `${i + 1}. **${f.title}** — ${f.detail}`) : ["1. No common pattern matched — inspect the log excerpt below."]),
-  "",
-  "## Suggested next steps",
-  "",
-  ...(findings.flatMap((f) => f.steps.map((s) => `- ${s}`)).slice(0, 8).length
-    ? findings.flatMap((f) => f.steps.map((s) => `- ${s}`)).slice(0, 8)
-    : ["- Open the failed job log and jump to the first `Error` / `FAIL` line.", "- Re-run locally with the same Node/OS as the workflow."]),
+  narrative,
   "",
   "<details><summary>Failed log excerpt (truncated)</summary>",
   "",
@@ -74,10 +84,9 @@ const body = [
   "",
   "</details>",
   "",
-  "_Heuristic Tier 1 bot — not a substitute for reading the full log._",
+  `_Tier 1 · mode=${mode} · source=${source}_`,
 ].join("\n");
 
-// Prefer commenting on the PR for this SHA; else create an issue
 let commented = false;
 if (headSha) {
   try {
@@ -101,6 +110,46 @@ if (!commented) {
   console.log("Opened diagnosis issue");
 }
 
+function heuristicNarrative(findings) {
+  const lines = [
+    "## Likely causes",
+    "",
+    ...(findings.length
+      ? findings.map((f, i) => `${i + 1}. **${f.title}** — ${f.detail}`)
+      : ["1. No common pattern matched — inspect the log excerpt below."]),
+    "",
+    "## Suggested next steps",
+    "",
+    ...(findings.flatMap((f) => f.steps.map((s) => `- ${s}`)).slice(0, 8).length
+      ? findings.flatMap((f) => f.steps.map((s) => `- ${s}`)).slice(0, 8)
+      : [
+          "- Open the failed job log and jump to the first `Error` / `FAIL` line.",
+          "- Re-run locally with the same Node/OS as the workflow.",
+        ]),
+  ];
+  return lines.join("\n");
+}
+
+async function llmDiagnose(cfg, ctx) {
+  const system = `You are a CI failure analyst for a government digital service repo.
+Write concise GitHub-flavored markdown with sections:
+## Likely causes
+## Suggested next steps
+Be specific to the log. Do not invent files that are not evidenced. Max ~400 words.`;
+
+  const user = [
+    `Workflow: ${ctx.workflowName}`,
+    `Run: ${ctx.runUrl}`,
+    `SHA: ${ctx.headSha}`,
+    `Heuristic hits: ${JSON.stringify(ctx.findings)}`,
+    "",
+    "Failed log:",
+    ctx.logText.slice(-8000),
+  ].join("\n");
+
+  return chatCompletion(cfg, system, user, { json: false });
+}
+
 function analyze(log) {
   const L = log.toLowerCase();
   const out = [];
@@ -114,7 +163,7 @@ function analyze(log) {
   }
   if (/cannot find module|module not found|err_module_not_found/.test(L)) {
     add("Missing module", "A required package or file path was not found.", [
-      "Confirm the import path and that the dependency is in package.json (not only dev locally).",
+      "Confirm the import path and that the dependency is in package.json.",
     ]);
   }
   if (/test failed|failing tests|assertionerror|expected .* received|× |✕ /.test(L)) {
@@ -141,6 +190,11 @@ function analyze(log) {
   if (/docker|buildx|image/.test(L) && /error|failed/.test(L)) {
     add("Container build", "Docker/image build step failed.", [
       "Build the image locally with the same Dockerfile args.",
+    ]);
+  }
+  if (/intentional failure for tier 1/i.test(log)) {
+    add("Demo failure", "This is the Tier 1 demo-fail workflow.", [
+      "No product fix needed — used to validate CI diagnose.",
     ]);
   }
   return out;

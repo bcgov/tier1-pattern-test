@@ -77,11 +77,24 @@
       "Tier 1 / Preflight",
       "Tier 1 / Issue triage",
       "Tier 1 / Docs drift",
-      "Tier 1 / CI diagnose"
+      "Tier 1 / CI diagnose",
+      "Tier 1 / Issue triage (gh-aw)",
+      "Tier 1 / Docs drift (gh-aw)",
+      "Tier 1 / CI diagnose (gh-aw)"
     ],
     "max_log_chars": 12000
   },
   "preflight": {
     "require_labels": true
+  },
+  "agent": {
+    "mode": "auto",
+    "llm": {
+      "base_url": "https://api.openai.com/v1",
+      "model": "gpt-4o-mini",
+      "api_key_env": "TIER1_LLM_API_KEY",
+      "api_style": "openai",
+      "temperature": 0.2
+    }
   }
 }

@@ -1,12 +1,13 @@
 # Tier 1 enrolled
 
 Pack source: patterns/tier1
-Enrolled at: 2026-07-17T20:10:03Z
+Enrolled at: 2026-07-17T20:46:26Z
+gh-aw sources: true
 
 Next:
-1. Edit `tier1.config.json` (`project` name, paths).
-2. Push to GitHub and enable Actions.
-3. Run workflow **Tier 1 / Preflight**.
-4. Open a thin test issue to exercise triage.
-5. Run **Tier 1 / Demo fail CI** then confirm diagnose comment/issue.
-6. Run **Tier 1 / Docs drift** (workflow_dispatch) after a code-only commit.
+1. Edit `tier1.config.json` — `project` and `agent.mode` (`auto` | `heuristic` | `llm` | `gh-aw`).
+2. For LLM: add repo secret `TIER1_LLM_API_KEY` (see .github/tier1/AGENTIC.md).
+3. For gh-aw: `gh extension install github/gh-aw && gh aw compile`, commit `*.lock.yml`, set mode `gh-aw`.
+4. Push; enable Actions; workflow permissions Read and write.
+5. Run **Tier 1 / Preflight**.
+6. Test triage / demo-fail / docs-drift.

@@ -2,10 +2,11 @@
 /**
  * Verify Tier 1 enrolment: config, workflows present, labels creatable.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { loadConfig, repoRoot } from "./lib/config.mjs";
 import { ensureLabel, gh } from "./lib/gh.mjs";
+import { hasLlmCredentials, resolveAgentMode } from "./lib/agent-mode.mjs";
 
 const root = repoRoot();
 const failures = [];
@@ -27,6 +28,22 @@ let cfg;
 try {
   cfg = loadConfig(root);
   ok("tier1.config.json loaded");
+  const mode = resolveAgentMode(cfg);
+  ok(`agent.mode → ${mode} (configured: ${cfg.agent?.mode || "heuristic"})`);
+  if (mode === "llm" || cfg.agent?.mode === "auto") {
+    if (hasLlmCredentials(cfg)) ok("LLM API key present in environment");
+    else warn("No TIER1_LLM_API_KEY — auto/llm will use heuristic until secret is set");
+  }
+  if (mode === "gh-aw") {
+    const md = ["tier1-triage.md", "tier1-docs-drift.md", "tier1-ci-diagnose.md"];
+    for (const f of md) {
+      if (existsSync(path.join(root, ".github/workflows", f))) ok(`gh-aw source ${f}`);
+      else warn(`gh-aw source missing: .github/workflows/${f}`);
+      const lock = f.replace(/\.md$/, ".lock.yml");
+      if (existsSync(path.join(root, ".github/workflows", lock))) ok(`gh-aw lock ${lock}`);
+      else warn(`gh-aw lock missing: ${lock} — run gh aw compile`);
+    }
+  }
 } catch (e) {
   fail(e.message);
   cfg = null;
