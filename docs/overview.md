@@ -1,5 +1,12 @@
 # Overview
 
-`greet(name)` returns a greeting string.
+`greet(name = "world")` returns a French greeting string in the format `Bonjour, ${name}!`.
 
-(Intentionally simple — change `src/hello.js` without updating this file to exercise docs drift.)
+**Example:**
+
+```js
+import { greet } from "./src/hello.js";
+
+greet();          // "Bonjour, world!"
+greet("Alice");   // "Bonjour, Alice!"
+```
