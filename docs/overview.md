@@ -1,5 +1,20 @@
 # Overview
 
-`greet(name)` returns a greeting string.
+## `greet(name?)`
 
-(Intentionally simple — change `src/hello.js` without updating this file to exercise docs drift.)
+Returns a French greeting string.
+
+| Parameter | Type   | Default   | Description           |
+|-----------|--------|-----------|-----------------------|
+| `name`    | string | `"world"` | The name to greet     |
+
+**Returns:** `string` — `"Bonjour, <name>!"`
+
+**Example:**
+
+```js
+import { greet } from "./hello.js";
+
+greet();         // "Bonjour, world!"
+greet("Alice");  // "Bonjour, Alice!"
+```
